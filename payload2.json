@@ -1,0 +1,10 @@
+{
+  "deliveryId": "",
+  "isLiveNotes": false,
+  "refreshAuthCookie": true,
+  "isActiveBroadcast": false,
+  "isEditing": false,
+  "isKollectiveAgentInstalled": false,
+  "isEmbed": false,
+  "responseType": "json"
+}

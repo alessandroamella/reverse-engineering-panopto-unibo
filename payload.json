@@ -1,0 +1,20 @@
+{
+  "queryParameters": {
+    "bookmarked": false,
+    "endDate": null,
+    "folderID": "",
+    "getFolderData": true,
+    "includeArchived": true,
+    "includeArchivedStateCount": true,
+    "includePlaylists": true,
+    "isSharedWithMe": false,
+    "isSubscriptionsPage": false,
+    "maxResults": 250,
+    "page": 0,
+    "query": null,
+    "sessionListOnlyArchived": false,
+    "sortAscending": true,
+    "sortColumn": 1,
+    "startDate": null
+  }
+}
