@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
+import getpass
+import json
+import os
+import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Generator
-import requests, getpass, threading, json, yt_dlp
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
+
+import requests
+import yt_dlp
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 
 
 def get_id(viewerUrl: str):
     return (
         id[0]
-        if ((id := parse_qs(urlparse(viewerUrl).query).get("id")) != None)
+        if ((id := parse_qs(urlparse(viewerUrl).query).get("id")) is not None)
         else None
     )
 
@@ -102,33 +110,122 @@ def download_folder(s: requests.Session, folderID: str):
     viewerUrl_list: list[str] = [res["ViewerUrl"] for res in results_json]
 
     folderName: str = results_json[0]["FolderName"]
+    folderName = folderName.replace("\\/", " ")
 
+    print(f"Found {len(viewerUrl_list)} videos in folder '{folderName}'")
+
+    # Download videos sequentially within the folder to avoid overwhelming the server
     for i, viewerUrl in enumerate(viewerUrl_list):
-        folderName = folderName.replace("\\/", " ")
-        threading.Thread(
-            target=download,
-            args=[
-                s,
-                get_id(viewerUrl),
-                f"{folderName}/{i}.mp4",
-            ],
-        ).start()
+        print(
+            f"Downloading video {i+1}/{len(viewerUrl_list)} from folder '{folderName}'"
+        )
+        download(s, get_id(viewerUrl), f"{folderName}/{i+1:03d}.mp4")
+
+
+def read_urls_from_file(file_path: str) -> list[str]:
+    """Read URLs from a text file, one URL per line. Ignore empty lines and comments."""
+    urls = []
+    try:
+        with open(file_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    urls.append(line)
+    except FileNotFoundError:
+        print(f"Error: File '{file_path}' not found.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error reading file '{file_path}': {e}")
+        sys.exit(1)
+    return urls
+
+
+def process_single_url(
+    s: requests.Session, url: str, url_index: int, total_urls: int
+) -> tuple[str, bool, str]:
+    """Process a single URL and return result info."""
+    print(f"Processing URL {url_index}/{total_urls}: {url}")
+    try:
+        if id := get_id(url):
+            download(s, id)
+            return url, True, "Downloaded successfully"
+        elif folderID := parse_qs(urlparse(url).fragment).get("folderID"):
+            download_folder(s, folderID[0].strip('"'))
+            return url, True, "Folder downloaded successfully"
+        else:
+            return url, False, "URL not supported"
+    except Exception as e:
+        return url, False, f"Error: {e}"
+
+
+def get_credentials() -> tuple[str, str]:
+    """Get credentials from environment variables or prompt user."""
+    email = os.getenv("PANOPTO_EMAIL")
+    password = os.getenv("PANOPTO_PASSWORD")
+
+    if not email:
+        email = input("email: ").strip()
+    else:
+        print(f"Using email from environment: {email}")
+
+    if not password:
+        password = getpass.getpass("password ('*' not shown): ").strip()
+    else:
+        print("Using password from environment variable.")
+
+    return email, password
 
 
 def main():
-    email = input("email: ").strip()
-    password = getpass.getpass("password ('*' not shown): ").strip()
+    # Load environment variables from .env file
+    load_dotenv()
+
+    # Check if a URLs file is provided as command line argument
+    if len(sys.argv) > 1:
+        urls_file = sys.argv[1]
+        urls = read_urls_from_file(urls_file)
+        print(f"Found {len(urls)} URLs in '{urls_file}'")
+    else:
+        urls = []
+
+    # Get number of parallel downloads from environment or use default
+    max_workers = int(os.getenv("MAX_PARALLEL_DOWNLOADS", "3"))
+    print(f"Using {max_workers} parallel downloads")
+
+    # Get credentials from environment or prompt
+    email, password = get_credentials()
 
     s = next(get_session_with_cookies(email, password))
 
-    url = input("url: ").strip()
+    # If URLs file was provided, process all URLs
+    if urls:
+        print("Processing URLs from file...")
 
-    if id := get_id(url):
-        download(s, id)
-    elif folderID := parse_qs(urlparse(url).fragment).get("folderID"):
-        download_folder(s, folderID[0].strip('"'))
+        # Use ThreadPoolExecutor for parallel processing
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_url = {
+                executor.submit(process_single_url, s, url, i + 1, len(urls)): url
+                for i, url in enumerate(urls)
+            }
+
+            # Process completed tasks
+            completed = 0
+            for future in as_completed(future_to_url):
+                url, success, message = future.result()
+                completed += 1
+                status = "✓" if success else "✗"
+                print(f"[{completed}/{len(urls)}] {status} {url}: {message}")
     else:
-        exit("NOT SUPPORTED\n")
+        # Original behavior: prompt for single URL
+        url = input("url: ").strip()
+
+        if id := get_id(url):
+            download(s, id)
+        elif folderID := parse_qs(urlparse(url).fragment).get("folderID"):
+            download_folder(s, folderID[0].strip('"'))
+        else:
+            exit("NOT SUPPORTED\n")
 
 
 main()

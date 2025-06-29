@@ -1,0 +1,10 @@
+# Panopto URLs - one per line
+# Lines starting with # are comments and will be ignored
+
+# Example individual video URL:
+# https://unibo.cloud.panopto.eu/Panopto/Pages/Viewer.aspx?id=your-video-id
+
+# Example folder URL:
+# https://unibo.cloud.panopto.eu/Panopto/Pages/Sessions/List.aspx#folderID="your-folder-id"&page=0&maxResults=250
+
+# Add your URLs below (remove the # to uncomment):
