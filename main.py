@@ -63,7 +63,12 @@ def get_session_with_cookies(
         yield s
 
 
-def download(s: requests.Session, id: str, path: str | None = None, download_dir: str = "downloads"):
+def download(
+    s: requests.Session,
+    id: str,
+    path: str | None = None,
+    download_dir: str = "downloads",
+):
     s.get(f"https://unibo.cloud.panopto.eu/Panopto/Pages/Viewer.aspx?id={id}")
 
     with open("payload2.json") as f:
@@ -87,14 +92,19 @@ def download(s: requests.Session, id: str, path: str | None = None, download_dir
             "outtmpl": (
                 path
                 if path
-                else os.path.join(download_dir, f"{sessionGroupLongName} {sessionName}.mp4".replace("/", "-"))
+                else os.path.join(
+                    download_dir,
+                    f"{sessionGroupLongName} {sessionName}.mp4".replace("/", "-"),
+                )
             ),
         }
     ) as ydl:
         ydl.download(streamUrl)
 
 
-def download_folder(s: requests.Session, folderID: str, download_dir: str = "downloads"):
+def download_folder(
+    s: requests.Session, folderID: str, download_dir: str = "downloads"
+):
 
     s.get(
         f'https://unibo.cloud.panopto.eu/Panopto/Pages/Sessions/List.aspx#folderID="{folderID}"&page=0&maxResults=250'
@@ -125,7 +135,12 @@ def download_folder(s: requests.Session, folderID: str, download_dir: str = "dow
         print(
             f"Downloading video {i+1}/{len(viewerUrl_list)} from folder '{folderName}'"
         )
-        download(s, get_id(viewerUrl), os.path.join(folder_path, f"{i+1:03d}.mp4"), download_dir)
+        download(
+            s,
+            get_id(viewerUrl),
+            os.path.join(folder_path, f"{i+1:03d}.mp4"),
+            download_dir,
+        )
 
 
 def read_urls_from_file(file_path: str) -> list[str]:
@@ -147,7 +162,11 @@ def read_urls_from_file(file_path: str) -> list[str]:
 
 
 def process_single_url(
-    s: requests.Session, url: str, url_index: int, total_urls: int, download_dir: str = "downloads"
+    s: requests.Session,
+    url: str,
+    url_index: int,
+    total_urls: int,
+    download_dir: str = "downloads",
 ) -> tuple[str, bool, str]:
     """Process a single URL and return result info."""
     print(f"Processing URL {url_index}/{total_urls}: {url}")
@@ -240,7 +259,8 @@ URL File Format:
     )
 
     parser.add_argument(
-        "-d", "--download-dir",
+        "-d",
+        "--download-dir",
         default="downloads",
         help="Directory to save downloaded files (default: downloads)",
     )
@@ -289,7 +309,9 @@ def main():
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all tasks
             future_to_url = {
-                executor.submit(process_single_url, s, url, i + 1, len(urls), download_dir): url
+                executor.submit(
+                    process_single_url, s, url, i + 1, len(urls), download_dir
+                ): url
                 for i, url in enumerate(urls)
             }
 
