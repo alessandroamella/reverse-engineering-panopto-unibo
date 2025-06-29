@@ -63,7 +63,7 @@ def get_session_with_cookies(
         yield s
 
 
-def download(s: requests.Session, id: str, path: str | None = None):
+def download(s: requests.Session, id: str, path: str | None = None, download_dir: str = "downloads"):
     s.get(f"https://unibo.cloud.panopto.eu/Panopto/Pages/Viewer.aspx?id={id}")
 
     with open("payload2.json") as f:
@@ -78,22 +78,23 @@ def download(s: requests.Session, id: str, path: str | None = None):
     sessionGroupLongName = delivery_json["SessionGroupLongName"]
     sessionName = delivery_json["SessionName"]
 
+    # Create download directory if it doesn't exist
+    os.makedirs(download_dir, exist_ok=True)
+
     with yt_dlp.YoutubeDL(
         {
             "quiet": True,
             "outtmpl": (
                 path
                 if path
-                else f"{sessionGroupLongName} {sessionName}.mp4".replace(
-                    "/", "-"
-                )  # TODO add year
+                else os.path.join(download_dir, f"{sessionGroupLongName} {sessionName}.mp4".replace("/", "-"))
             ),
         }
     ) as ydl:
         ydl.download(streamUrl)
 
 
-def download_folder(s: requests.Session, folderID: str):
+def download_folder(s: requests.Session, folderID: str, download_dir: str = "downloads"):
 
     s.get(
         f'https://unibo.cloud.panopto.eu/Panopto/Pages/Sessions/List.aspx#folderID="{folderID}"&page=0&maxResults=250'
@@ -115,12 +116,16 @@ def download_folder(s: requests.Session, folderID: str):
 
     print(f"Found {len(viewerUrl_list)} videos in folder '{folderName}'")
 
+    # Create folder-specific download directory
+    folder_path = os.path.join(download_dir, folderName)
+    os.makedirs(folder_path, exist_ok=True)
+
     # Download videos sequentially within the folder to avoid overwhelming the server
     for i, viewerUrl in enumerate(viewerUrl_list):
         print(
             f"Downloading video {i+1}/{len(viewerUrl_list)} from folder '{folderName}'"
         )
-        download(s, get_id(viewerUrl), f"{folderName}/{i+1:03d}.mp4")
+        download(s, get_id(viewerUrl), os.path.join(folder_path, f"{i+1:03d}.mp4"), download_dir)
 
 
 def read_urls_from_file(file_path: str) -> list[str]:
@@ -142,16 +147,16 @@ def read_urls_from_file(file_path: str) -> list[str]:
 
 
 def process_single_url(
-    s: requests.Session, url: str, url_index: int, total_urls: int
+    s: requests.Session, url: str, url_index: int, total_urls: int, download_dir: str = "downloads"
 ) -> tuple[str, bool, str]:
     """Process a single URL and return result info."""
     print(f"Processing URL {url_index}/{total_urls}: {url}")
     try:
         if id := get_id(url):
-            download(s, id)
+            download(s, id, download_dir=download_dir)
             return url, True, "Downloaded successfully"
         elif folderID := parse_qs(urlparse(url).fragment).get("folderID"):
-            download_folder(s, folderID[0].strip('"'))
+            download_folder(s, folderID[0].strip('"'), download_dir)
             return url, True, "Folder downloaded successfully"
         else:
             return url, False, "URL not supported"
@@ -195,6 +200,7 @@ Examples:
   %(prog)s urls.txt                  # Batch download from file
   %(prog)s -u "https://..."          # Download single URL
   %(prog)s urls.txt -w 5             # Use 5 parallel downloads
+  %(prog)s -d "my_videos"            # Download to custom directory
   
 Environment Variables:
   PANOPTO_EMAIL                      # Your UniBo email
@@ -233,6 +239,12 @@ URL File Format:
         help="UniBo password (can also use PANOPTO_PASSWORD env var) - NOT RECOMMENDED for security",
     )
 
+    parser.add_argument(
+        "-d", "--download-dir",
+        default="downloads",
+        help="Directory to save downloaded files (default: downloads)",
+    )
+
     return parser.parse_args()
 
 
@@ -257,6 +269,10 @@ def main():
     )
     print(f"Using {max_workers} parallel downloads")
 
+    # Get download directory
+    download_dir = args.download_dir
+    print(f"Downloads will be saved to: {os.path.abspath(download_dir)}")
+
     # Get credentials
     email, password = get_credentials(args)
 
@@ -273,7 +289,7 @@ def main():
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all tasks
             future_to_url = {
-                executor.submit(process_single_url, s, url, i + 1, len(urls)): url
+                executor.submit(process_single_url, s, url, i + 1, len(urls), download_dir): url
                 for i, url in enumerate(urls)
             }
 
@@ -289,9 +305,9 @@ def main():
         url = input("url: ").strip()
 
         if id := get_id(url):
-            download(s, id)
+            download(s, id, download_dir=download_dir)
         elif folderID := parse_qs(urlparse(url).fragment).get("folderID"):
-            download_folder(s, folderID[0].strip('"'))
+            download_folder(s, folderID[0].strip('"'), download_dir)
         else:
             exit("NOT SUPPORTED\n")
 
