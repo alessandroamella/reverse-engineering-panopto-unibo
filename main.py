@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import getpass
 import json
 import os
@@ -158,48 +159,115 @@ def process_single_url(
         return url, False, f"Error: {e}"
 
 
-def get_credentials() -> tuple[str, str]:
-    """Get credentials from environment variables or prompt user."""
-    email = os.getenv("PANOPTO_EMAIL")
-    password = os.getenv("PANOPTO_PASSWORD")
+def get_credentials(args) -> tuple[str, str]:
+    """Get credentials from command line args, environment variables, or prompt user."""
+    # Priority: command line args > environment variables > prompt
+    email = args.email or os.getenv("PANOPTO_EMAIL")
+    password = args.password or os.getenv("PANOPTO_PASSWORD")
 
     if not email:
         email = input("email: ").strip()
     else:
-        print(f"Using email from environment: {email}")
+        if args.email:
+            print(f"Using email from command line: {email}")
+        else:
+            print(f"Using email from environment: {email}")
 
     if not password:
         password = getpass.getpass("password ('*' not shown): ").strip()
     else:
-        print("Using password from environment variable.")
+        if args.password:
+            print("Using password from command line.")
+        else:
+            print("Using password from environment variable.")
 
     return email, password
+
+
+def parse_arguments():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Download videos from Panopto (UniBo)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s                           # Interactive mode - prompts for URL
+  %(prog)s urls.txt                  # Batch download from file
+  %(prog)s -u "https://..."          # Download single URL
+  %(prog)s urls.txt -w 5             # Use 5 parallel downloads
+  
+Environment Variables:
+  PANOPTO_EMAIL                      # Your UniBo email
+  PANOPTO_PASSWORD                   # Your UniBo password  
+  MAX_PARALLEL_DOWNLOADS             # Number of parallel downloads (default: 3)
+  
+URL File Format:
+  One URL per line, lines starting with # are comments
+  Supports both individual videos and folder URLs
+        """,
+    )
+
+    parser.add_argument(
+        "urls_file",
+        nargs="?",
+        help="Text file containing URLs to download (one per line)",
+    )
+
+    parser.add_argument(
+        "-u", "--url", help="Single URL to download (alternative to interactive mode)"
+    )
+
+    parser.add_argument(
+        "-w",
+        "--workers",
+        type=int,
+        help="Number of parallel downloads (default: 3, can also use MAX_PARALLEL_DOWNLOADS env var)",
+    )
+
+    parser.add_argument(
+        "--email", help="UniBo email (can also use PANOPTO_EMAIL env var)"
+    )
+
+    parser.add_argument(
+        "--password",
+        help="UniBo password (can also use PANOPTO_PASSWORD env var) - NOT RECOMMENDED for security",
+    )
+
+    return parser.parse_args()
 
 
 def main():
     # Load environment variables from .env file
     load_dotenv()
 
-    # Check if a URLs file is provided as command line argument
-    if len(sys.argv) > 1:
-        urls_file = sys.argv[1]
-        urls = read_urls_from_file(urls_file)
-        print(f"Found {len(urls)} URLs in '{urls_file}'")
-    else:
-        urls = []
+    args = parse_arguments()
 
-    # Get number of parallel downloads from environment or use default
-    max_workers = int(os.getenv("MAX_PARALLEL_DOWNLOADS", "3"))
+    # Determine URLs to process
+    urls = []
+    if args.urls_file:
+        urls = read_urls_from_file(args.urls_file)
+        print(f"Found {len(urls)} URLs in '{args.urls_file}'")
+    elif args.url:
+        urls = [args.url]
+        print(f"Processing single URL: {args.url}")
+
+    # Get number of parallel downloads
+    max_workers = (
+        args.workers if args.workers else int(os.getenv("MAX_PARALLEL_DOWNLOADS", "3"))
+    )
     print(f"Using {max_workers} parallel downloads")
 
-    # Get credentials from environment or prompt
-    email, password = get_credentials()
+    # Get credentials
+    email, password = get_credentials(args)
 
     s = next(get_session_with_cookies(email, password))
 
-    # If URLs file was provided, process all URLs
+    # Process URLs
     if urls:
-        print("Processing URLs from file...")
+        if len(urls) > 1:
+            print("Processing URLs...")
+        else:
+            print("Processing URL...")
 
         # Use ThreadPoolExecutor for parallel processing
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -217,7 +285,7 @@ def main():
                 status = "✓" if success else "✗"
                 print(f"[{completed}/{len(urls)}] {status} {url}: {message}")
     else:
-        # Original behavior: prompt for single URL
+        # Interactive mode: prompt for single URL
         url = input("url: ").strip()
 
         if id := get_id(url):
