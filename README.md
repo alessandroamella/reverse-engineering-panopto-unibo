@@ -2,6 +2,8 @@
 
 A Python script to download videos from Panopto (Unibo).
 
+Forked from [https://codeberg.org/matteomanuelli/reverse-engineering-panopto-unibo](https://codeberg.org/matteomanuelli/reverse-engineering-panopto-unibo).
+
 ## Features
 
 - Download individual videos or entire folders
@@ -96,6 +98,6 @@ python3 main.py urls.txt
 
 ### Environment Variables
 
-- `PANOPTO_EMAIL`: Your UniBo email
-- `PANOPTO_PASSWORD`: Your UniBo password
+- `PANOPTO_EMAIL`: Your Unibo email
+- `PANOPTO_PASSWORD`: Your Unibo password
 - `MAX_PARALLEL_DOWNLOADS`: Number of parallel downloads (default: 3, recommended: 2-5)
